@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, ClipboardList } from "lucide-react";
+import { Plus, ClipboardList, Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,6 +24,16 @@ interface ClassOption {
   name: string;
 }
 
+interface Student {
+  id: string;
+  full_name: string;
+}
+
+interface ScoreEntry {
+  student_id: string;
+  score: string;
+}
+
 const typeColors: Record<string, string> = {
   Classwork: "bg-muted text-muted-foreground",
   Quiz: "bg-info/10 text-info",
@@ -36,6 +46,13 @@ export default function Assessments() {
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", type: "Classwork", total_score: "100", class_id: "", date: new Date().toISOString().split("T")[0] });
+
+  // Score entry state
+  const [scoreOpen, setScoreOpen] = useState(false);
+  const [selectedAssessment, setSelectedAssessment] = useState<Assessment | null>(null);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [scores, setScores] = useState<ScoreEntry[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const fetchData = async () => {
     const [aRes, cRes] = await Promise.all([
@@ -61,6 +78,54 @@ export default function Assessments() {
     toast.success("Assessment created!");
     setOpen(false);
     fetchData();
+  };
+
+  const openScoreEntry = async (assessment: Assessment) => {
+    setSelectedAssessment(assessment);
+    setScoreOpen(true);
+
+    const [studentsRes, scoresRes] = await Promise.all([
+      supabase.from("students").select("id, full_name").eq("class_id", assessment.class_id).order("full_name"),
+      supabase.from("student_scores").select("student_id, score").eq("assessment_id", assessment.id),
+    ]);
+
+    const studentList = studentsRes.data || [];
+    const existingScores = scoresRes.data || [];
+    setStudents(studentList);
+
+    setScores(studentList.map((s) => {
+      const existing = existingScores.find((sc) => sc.student_id === s.id);
+      return { student_id: s.id, score: existing ? String(existing.score) : "" };
+    }));
+  };
+
+  const updateScore = (studentId: string, value: string) => {
+    setScores((prev) => prev.map((s) => s.student_id === studentId ? { ...s, score: value } : s));
+  };
+
+  const handleSaveScores = async () => {
+    if (!selectedAssessment) return;
+    setSaving(true);
+
+    // Delete existing scores for this assessment then upsert
+    await supabase.from("student_scores").delete().eq("assessment_id", selectedAssessment.id);
+
+    const toInsert = scores
+      .filter((s) => s.score !== "")
+      .map((s) => ({
+        assessment_id: selectedAssessment.id,
+        student_id: s.student_id,
+        score: Number(s.score),
+      }));
+
+    if (toInsert.length > 0) {
+      const { error } = await supabase.from("student_scores").insert(toInsert);
+      if (error) { toast.error(error.message); setSaving(false); return; }
+    }
+
+    toast.success("Scores saved!");
+    setSaving(false);
+    setScoreOpen(false);
   };
 
   const getClassName = (classId: string) => classes.find((c) => c.id === classId)?.name || "";
@@ -127,7 +192,7 @@ export default function Assessments() {
               </TableHeader>
               <TableBody>
                 {assessments.map((a) => (
-                  <TableRow key={a.id}>
+                  <TableRow key={a.id} className="cursor-pointer hover:bg-muted/60" onClick={() => openScoreEntry(a)}>
                     <TableCell className="font-medium">{a.title}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={typeColors[a.type]}>{a.type}</Badge>
@@ -141,6 +206,53 @@ export default function Assessments() {
             </Table>
           </div>
         )}
+
+        {/* Score Entry Dialog */}
+        <Dialog open={scoreOpen} onOpenChange={setScoreOpen}>
+          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                Enter Scores — {selectedAssessment?.title}
+                <span className="block text-sm font-normal text-muted-foreground mt-1">
+                  {selectedAssessment && getClassName(selectedAssessment.class_id)} · Max: {selectedAssessment?.total_score}
+                </span>
+              </DialogTitle>
+            </DialogHeader>
+            {students.length === 0 ? (
+              <p className="text-muted-foreground text-center py-6">No students in this class. Add students first.</p>
+            ) : (
+              <div className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  {students.map((student, idx) => {
+                    const entry = scores.find((s) => s.student_id === student.id);
+                    const val = entry?.score || "";
+                    const numVal = Number(val);
+                    const isOver = val !== "" && numVal > (selectedAssessment?.total_score || 0);
+                    return (
+                      <div key={student.id} className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground w-6 text-right">{idx + 1}.</span>
+                        <span className="flex-1 text-sm font-medium truncate">{student.full_name}</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={selectedAssessment?.total_score}
+                          placeholder="—"
+                          value={val}
+                          onChange={(e) => updateScore(student.id, e.target.value)}
+                          className={`w-20 text-center ${isOver ? "border-destructive" : ""}`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <Button onClick={handleSaveScores} className="w-full gap-2" disabled={saving}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save Scores
+                </Button>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
