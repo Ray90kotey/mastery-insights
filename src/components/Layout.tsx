@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, GraduationCap, Users, ClipboardList, BarChart3, Menu, X, LogOut } from "lucide-react";
+import { LayoutDashboard, GraduationCap, Users, ClipboardList, BarChart3, Menu, X, LogOut, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 
@@ -9,6 +9,7 @@ const navItems = [
   { icon: GraduationCap, label: "Classes", path: "/classes" },
   { icon: ClipboardList, label: "Assessments", path: "/assessments" },
   { icon: BarChart3, label: "Reports", path: "/reports" },
+  { icon: Settings, label: "Setup", path: "/setup" },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
