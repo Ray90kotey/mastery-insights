@@ -10,6 +10,7 @@ import Classes from "./pages/Classes";
 import ClassDetail from "./pages/ClassDetail";
 import Assessments from "./pages/Assessments";
 import Reports from "./pages/Reports";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="/classes/:classId" element={<ClassDetail />} />
           <Route path="/assessments" element={<Assessments />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/setup" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
