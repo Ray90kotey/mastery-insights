@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Trash2, Settings as SettingsIcon, Calendar, BookOpen } from "lucide-react";
+import { Plus, Settings as SettingsIcon, Calendar, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import Layout from "@/components/Layout";
+import TermCard from "@/components/TermCard";
 
 interface ClassOption {
   id: string;
@@ -183,17 +183,12 @@ export default function Settings() {
                   ) : (
                     <div className="space-y-2">
                       {terms.map((term) => (
-                        <div key={term.id} className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
-                          <span className="text-sm font-medium">{term.name}</span>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDeleteTerm(term.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <TermCard
+                          key={term.id}
+                          termId={term.id}
+                          termName={term.name}
+                          onDelete={() => handleDeleteTerm(term.id)}
+                        />
                       ))}
                     </div>
                   )}
