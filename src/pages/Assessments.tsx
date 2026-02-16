@@ -17,6 +17,8 @@ interface Assessment {
   total_score: number;
   date: string;
   class_id: string;
+  lesson_id: string | null;
+  outcome_id: string | null;
 }
 
 interface ClassOption {
@@ -34,6 +36,18 @@ interface ScoreEntry {
   score: string;
 }
 
+interface LessonOption {
+  id: string;
+  title: string;
+  week_number: number;
+  term_name: string;
+}
+
+interface OutcomeOption {
+  id: string;
+  description: string;
+}
+
 const typeColors: Record<string, string> = {
   Classwork: "bg-muted text-muted-foreground",
   Quiz: "bg-info/10 text-info",
@@ -45,7 +59,11 @@ export default function Assessments() {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: "", type: "Classwork", total_score: "100", class_id: "", date: new Date().toISOString().split("T")[0] });
+  const [form, setForm] = useState({ title: "", type: "Classwork", total_score: "100", class_id: "", lesson_id: "", outcome_id: "", date: new Date().toISOString().split("T")[0] });
+
+  // Lesson/outcome options for form
+  const [lessonOptions, setLessonOptions] = useState<LessonOption[]>([]);
+  const [outcomeOptions, setOutcomeOptions] = useState<OutcomeOption[]>([]);
 
   // Score entry state
   const [scoreOpen, setScoreOpen] = useState(false);
@@ -65,6 +83,34 @@ export default function Assessments() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Fetch lessons when class changes in form
+  const fetchLessonsForClass = async (classId: string) => {
+    setLessonOptions([]);
+    setOutcomeOptions([]);
+    setForm((f) => ({ ...f, lesson_id: "", outcome_id: "" }));
+    if (!classId) return;
+    const { data: terms } = await supabase.from("terms").select("id, name").eq("class_id", classId);
+    if (!terms || terms.length === 0) return;
+    const { data: weeks } = await supabase.from("weeks").select("id, week_number, term_id").in("term_id", terms.map((t) => t.id)).order("week_number");
+    if (!weeks || weeks.length === 0) return;
+    const { data: lessons } = await supabase.from("lessons").select("id, title, week_id").in("week_id", weeks.map((w) => w.id)).order("title");
+    if (!lessons) return;
+    const termMap = Object.fromEntries(terms.map((t) => [t.id, t.name]));
+    setLessonOptions(lessons.map((l) => {
+      const week = weeks.find((w) => w.id === l.week_id)!;
+      return { id: l.id, title: l.title, week_number: week.week_number, term_name: termMap[week.term_id] };
+    }));
+  };
+
+  // Fetch outcomes when lesson changes in form
+  const fetchOutcomesForLesson = async (lessonId: string) => {
+    setOutcomeOptions([]);
+    setForm((f) => ({ ...f, outcome_id: "" }));
+    if (!lessonId) return;
+    const { data } = await supabase.from("outcomes").select("id, description").eq("lesson_id", lessonId);
+    if (data) setOutcomeOptions(data);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     const { error } = await supabase.from("assessments").insert({
@@ -72,6 +118,8 @@ export default function Assessments() {
       type: form.type,
       total_score: Number(form.total_score),
       class_id: form.class_id,
+      lesson_id: form.lesson_id || null,
+      outcome_id: form.outcome_id || null,
       date: form.date,
     });
     if (error) { toast.error(error.message); return; }
@@ -156,7 +204,7 @@ export default function Assessments() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={form.class_id} onValueChange={(v) => setForm({ ...form, class_id: v })}>
+                <Select value={form.class_id} onValueChange={(v) => { setForm({ ...form, class_id: v }); fetchLessonsForClass(v); }}>
                   <SelectTrigger><SelectValue placeholder="Select class" /></SelectTrigger>
                   <SelectContent>
                     {classes.map((c) => (
@@ -164,6 +212,26 @@ export default function Assessments() {
                     ))}
                   </SelectContent>
                 </Select>
+                {form.class_id && lessonOptions.length > 0 && (
+                  <Select value={form.lesson_id} onValueChange={(v) => { setForm({ ...form, lesson_id: v }); fetchOutcomesForLesson(v); }}>
+                    <SelectTrigger><SelectValue placeholder="Link to lesson (optional)" /></SelectTrigger>
+                    <SelectContent>
+                      {lessonOptions.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>{l.term_name} · W{l.week_number} · {l.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {form.lesson_id && outcomeOptions.length > 0 && (
+                  <Select value={form.outcome_id} onValueChange={(v) => setForm({ ...form, outcome_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Link to outcome (optional)" /></SelectTrigger>
+                    <SelectContent>
+                      {outcomeOptions.map((o) => (
+                        <SelectItem key={o.id} value={o.id}>{o.description}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <Input type="number" placeholder="Total score" value={form.total_score} onChange={(e) => setForm({ ...form, total_score: e.target.value })} required />
                 <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
                 <Button type="submit" className="w-full">Create Assessment</Button>
