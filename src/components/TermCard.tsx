@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Trash2, ChevronDown, ChevronRight, BookOpen } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, BookOpen, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -19,6 +19,12 @@ interface Lesson {
   week_id: string;
 }
 
+interface Outcome {
+  id: string;
+  description: string;
+  lesson_id: string;
+}
+
 interface TermCardProps {
   termId: string;
   termName: string;
@@ -31,6 +37,10 @@ export default function TermCard({ termId, termName, onDelete }: TermCardProps) 
   const [lessons, setLessons] = useState<Record<string, Lesson[]>>({});
   const [addingLesson, setAddingLesson] = useState<string | null>(null);
   const [newLessonTitle, setNewLessonTitle] = useState("");
+  const [outcomes, setOutcomes] = useState<Record<string, Outcome[]>>({});
+  const [addingOutcome, setAddingOutcome] = useState<string | null>(null);
+  const [newOutcomeDesc, setNewOutcomeDesc] = useState("");
+  const [expandedLessons, setExpandedLessons] = useState<Set<string>>(new Set());
 
   const fetchWeeks = async () => {
     const { data } = await supabase
@@ -58,6 +68,23 @@ export default function TermCard({ termId, termName, onDelete }: TermCardProps) 
     }
   };
 
+  const fetchOutcomes = async (lessonIds: string[]) => {
+    if (lessonIds.length === 0) return;
+    const { data } = await supabase
+      .from("outcomes")
+      .select("*")
+      .in("lesson_id", lessonIds)
+      .order("description");
+    if (data) {
+      const grouped: Record<string, Outcome[]> = {};
+      data.forEach((o) => {
+        if (!grouped[o.lesson_id]) grouped[o.lesson_id] = [];
+        grouped[o.lesson_id].push(o);
+      });
+      setOutcomes(grouped);
+    }
+  };
+
   useEffect(() => {
     if (expanded) {
       fetchWeeks();
@@ -69,6 +96,23 @@ export default function TermCard({ termId, termName, onDelete }: TermCardProps) 
       fetchLessons(weeks.map((w) => w.id));
     }
   }, [weeks]);
+
+  // Fetch outcomes when lessons change
+  useEffect(() => {
+    const allLessonIds = Object.values(lessons).flat().map((l) => l.id);
+    if (allLessonIds.length > 0) {
+      fetchOutcomes(allLessonIds);
+    }
+  }, [lessons]);
+
+  const toggleLesson = (lessonId: string) => {
+    setExpandedLessons((prev) => {
+      const next = new Set(prev);
+      if (next.has(lessonId)) next.delete(lessonId);
+      else next.add(lessonId);
+      return next;
+    });
+  };
 
   const handleAddWeek = async () => {
     const nextNum = weeks.length > 0 ? Math.max(...weeks.map((w) => w.week_number)) + 1 : 1;
@@ -99,7 +143,27 @@ export default function TermCard({ termId, termName, onDelete }: TermCardProps) 
     const { error } = await supabase.from("lessons").delete().eq("id", lessonId);
     if (error) { toast.error(error.message); return; }
     toast.success("Lesson deleted");
+    setExpandedLessons((prev) => { const next = new Set(prev); next.delete(lessonId); return next; });
     fetchLessons(weeks.map((w) => w.id));
+  };
+
+  const handleAddOutcome = async (lessonId: string) => {
+    if (!newOutcomeDesc.trim()) return;
+    const { error } = await supabase.from("outcomes").insert({ description: newOutcomeDesc.trim(), lesson_id: lessonId });
+    if (error) { toast.error(error.message); return; }
+    toast.success("Outcome added");
+    setAddingOutcome(null);
+    setNewOutcomeDesc("");
+    const allLessonIds = Object.values(lessons).flat().map((l) => l.id);
+    fetchOutcomes(allLessonIds);
+  };
+
+  const handleDeleteOutcome = async (outcomeId: string) => {
+    const { error } = await supabase.from("outcomes").delete().eq("id", outcomeId);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Outcome deleted");
+    const allLessonIds = Object.values(lessons).flat().map((l) => l.id);
+    fetchOutcomes(allLessonIds);
   };
 
   return (
@@ -139,19 +203,69 @@ export default function TermCard({ termId, termName, onDelete }: TermCardProps) 
 
                 {/* Lessons */}
                 {(lessons[week.id] || []).map((lesson) => (
-                  <div key={lesson.id} className="flex items-center justify-between pl-3 py-1.5 rounded bg-background border border-border">
-                    <div className="flex items-center gap-2">
-                      <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-sm">{lesson.title}</span>
+                  <div key={lesson.id} className="rounded bg-background border border-border overflow-hidden">
+                    <div className="flex items-center justify-between pl-3 pr-1 py-1.5">
+                      <button
+                        onClick={() => toggleLesson(lesson.id)}
+                        className="flex items-center gap-2 text-sm hover:text-primary transition-colors"
+                      >
+                        {expandedLessons.has(lesson.id) ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                        <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span>{lesson.title}</span>
+                        <span className="text-xs text-muted-foreground">({(outcomes[lesson.id] || []).length} outcomes)</span>
+                      </button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDeleteLesson(lesson.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDeleteLesson(lesson.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+
+                    {expandedLessons.has(lesson.id) && (
+                      <div className="border-t border-border px-3 py-2 space-y-1.5 bg-muted/30">
+                        {(outcomes[lesson.id] || []).map((outcome) => (
+                          <div key={outcome.id} className="flex items-center justify-between pl-2 py-1 rounded bg-background border border-border">
+                            <div className="flex items-center gap-2">
+                              <Target className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-xs">{outcome.description}</span>
+                            </div>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteOutcome(outcome.id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+
+                        {addingOutcome === lesson.id ? (
+                          <div className="flex items-center gap-2 pl-2">
+                            <Input
+                              placeholder="Outcome description"
+                              value={newOutcomeDesc}
+                              onChange={(e) => setNewOutcomeDesc(e.target.value)}
+                              className="h-7 text-xs"
+                              autoFocus
+                              onKeyDown={(e) => { if (e.key === "Enter") handleAddOutcome(lesson.id); if (e.key === "Escape") { setAddingOutcome(null); setNewOutcomeDesc(""); } }}
+                            />
+                            <Button size="sm" className="h-7 text-xs" onClick={() => handleAddOutcome(lesson.id)}>Add</Button>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setAddingOutcome(null); setNewOutcomeDesc(""); }}>Cancel</Button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setAddingOutcome(lesson.id); setNewOutcomeDesc(""); }}
+                            className="flex items-center gap-1 pl-2 text-xs text-muted-foreground hover:text-primary transition-colors"
+                          >
+                            <Plus className="h-3 w-3" /> Add Outcome
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
 
