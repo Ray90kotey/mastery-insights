@@ -19,6 +19,8 @@ interface Assessment {
   class_id: string;
   lesson_id: string | null;
   outcome_id: string | null;
+  lesson_title?: string;
+  outcome_description?: string;
 }
 
 interface ClassOption {
@@ -74,10 +76,16 @@ export default function Assessments() {
 
   const fetchData = async () => {
     const [aRes, cRes] = await Promise.all([
-      supabase.from("assessments").select("*").order("date", { ascending: false }),
+      supabase.from("assessments").select("*, lessons(title), outcomes(description)").order("date", { ascending: false }),
       supabase.from("classes").select("id, name"),
     ]);
-    if (aRes.data) setAssessments(aRes.data);
+    if (aRes.data) {
+      setAssessments(aRes.data.map((a: any) => ({
+        ...a,
+        lesson_title: a.lessons?.title || null,
+        outcome_description: a.outcomes?.description || null,
+      })));
+    }
     if (cRes.data) setClasses(cRes.data);
   };
 
@@ -250,10 +258,12 @@ export default function Assessments() {
           <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow>
+               <TableRow>
                   <TableHead>Title</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="hidden sm:table-cell">Class</TableHead>
+                  <TableHead className="hidden lg:table-cell">Lesson</TableHead>
+                  <TableHead className="hidden lg:table-cell">Outcome</TableHead>
                   <TableHead>Score</TableHead>
                   <TableHead className="hidden md:table-cell">Date</TableHead>
                 </TableRow>
@@ -266,6 +276,8 @@ export default function Assessments() {
                       <Badge variant="secondary" className={typeColors[a.type]}>{a.type}</Badge>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell text-muted-foreground">{getClassName(a.class_id)}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-muted-foreground text-xs max-w-[150px] truncate">{a.lesson_title || "—"}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-muted-foreground text-xs max-w-[150px] truncate">{a.outcome_description || "—"}</TableCell>
                     <TableCell>{a.total_score}</TableCell>
                     <TableCell className="hidden md:table-cell text-muted-foreground">{a.date}</TableCell>
                   </TableRow>
@@ -284,6 +296,16 @@ export default function Assessments() {
                 <span className="block text-sm font-normal text-muted-foreground mt-1">
                   {selectedAssessment && getClassName(selectedAssessment.class_id)} · Max: {selectedAssessment?.total_score}
                 </span>
+                {(selectedAssessment?.lesson_title || selectedAssessment?.outcome_description) && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {selectedAssessment?.lesson_title && (
+                      <Badge variant="outline" className="text-xs font-normal">Lesson: {selectedAssessment.lesson_title}</Badge>
+                    )}
+                    {selectedAssessment?.outcome_description && (
+                      <Badge variant="outline" className="text-xs font-normal">Outcome: {selectedAssessment.outcome_description}</Badge>
+                    )}
+                  </div>
+                )}
               </DialogTitle>
             </DialogHeader>
             {students.length === 0 ? (
