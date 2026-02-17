@@ -66,6 +66,8 @@ export default function Assessments() {
   // Lesson/outcome options for form
   const [lessonOptions, setLessonOptions] = useState<LessonOption[]>([]);
   const [outcomeOptions, setOutcomeOptions] = useState<OutcomeOption[]>([]);
+  const [creatingOutcome, setCreatingOutcome] = useState(false);
+  const [newOutcomeDesc, setNewOutcomeDesc] = useState("");
 
   // Score entry state
   const [scoreOpen, setScoreOpen] = useState(false);
@@ -117,6 +119,17 @@ export default function Assessments() {
     if (!lessonId) return;
     const { data } = await supabase.from("outcomes").select("id, description").eq("lesson_id", lessonId);
     if (data) setOutcomeOptions(data);
+  };
+
+  const handleCreateOutcomeInline = async () => {
+    if (!newOutcomeDesc.trim() || !form.lesson_id) return;
+    const { data, error } = await supabase.from("outcomes").insert({ description: newOutcomeDesc.trim(), lesson_id: form.lesson_id }).select("id, description").single();
+    if (error) { toast.error(error.message); return; }
+    toast.success("Outcome created");
+    setOutcomeOptions((prev) => [...prev, data]);
+    setForm((f) => ({ ...f, outcome_id: data.id }));
+    setNewOutcomeDesc("");
+    setCreatingOutcome(false);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -230,15 +243,41 @@ export default function Assessments() {
                     </SelectContent>
                   </Select>
                 )}
-                {form.lesson_id && outcomeOptions.length > 0 && (
-                  <Select value={form.outcome_id} onValueChange={(v) => setForm({ ...form, outcome_id: v })}>
-                    <SelectTrigger><SelectValue placeholder="Link to outcome (optional)" /></SelectTrigger>
-                    <SelectContent>
-                      {outcomeOptions.map((o) => (
-                        <SelectItem key={o.id} value={o.id}>{o.description}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                {form.lesson_id && (
+<>
+                  {outcomeOptions.length > 0 && !creatingOutcome && (
+                    <Select value={form.outcome_id} onValueChange={(v) => setForm({ ...form, outcome_id: v })}>
+                      <SelectTrigger><SelectValue placeholder="Link to outcome (optional)" /></SelectTrigger>
+                      <SelectContent>
+                        {outcomeOptions.map((o) => (
+                          <SelectItem key={o.id} value={o.id}>{o.description}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {creatingOutcome ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="New outcome description"
+                        value={newOutcomeDesc}
+                        onChange={(e) => setNewOutcomeDesc(e.target.value)}
+                        className="text-sm"
+                        autoFocus
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateOutcomeInline(); } if (e.key === "Escape") { setCreatingOutcome(false); setNewOutcomeDesc(""); } }}
+                      />
+                      <Button type="button" size="sm" onClick={handleCreateOutcomeInline}>Add</Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => { setCreatingOutcome(false); setNewOutcomeDesc(""); }}>Cancel</Button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setCreatingOutcome(true)}
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Create new outcome
+                    </button>
+                  )}
+</>
                 )}
                 <Input type="number" placeholder="Total score" value={form.total_score} onChange={(e) => setForm({ ...form, total_score: e.target.value })} required />
                 <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
